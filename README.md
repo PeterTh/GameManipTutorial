@@ -240,4 +240,6 @@ With these changes, we now get working higher-resolution ambient occlusion:
 ![After](img/07b_result_post.png)
 It's still a bit artifacted, and could be even better, but it's a pretty huge improvement.
 
-However, our final frame -- that is, the actual game output -- is still completely broken. To fix this, we need to get back to our reference comparison. That way, we can determine that there is another depth/stencil buffer which needs to be adjusted to match our new AO buffer sizes, otherwise the API will (rightfully) refuse to do any rendering later on in the frame.
+However, our final frame -- that is, the actual game output -- is still completely broken. To fix this, we need to get back to our reference comparison. That way, we can determine that there is another 800x450 depth/stencil buffer of format `D24_UNORM_S8_UINT` which needs to be adjusted to match our new AO buffer sizes, otherwise the API will (rightfully) refuse to do any rendering later on in the frame.
+
+The full code with this issue resolved can be found in `code.cpp`. Note that it also includes the Nier:A bloom buffer fix, which operates on a similar principle.
