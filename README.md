@@ -20,7 +20,7 @@ In terms of foundational knowledge, to get the full benefit of this tutorial, it
 
 It's probably still somewhat useful without some of those.
 
-## The game of coice
+## The game of choice
 We will be dealing with **Nier: Automata**, because it is a great game and because it offers what I'd consider a "moderate" amount of challenge for the types of tasks we wish to perform. It also plays well with Renderdoc without any complicated coaxing. Of course, the tutorial should be equally applicable to a great many other games.
 
 # Analysis
@@ -112,7 +112,7 @@ What we need to investigate are the viewport settings for the relevant draw call
 ![Image](img/06_viewport_params.png)
 We see both a hardcoded 800x450 viewport setting as well as a very suspicious pixel shader constant buffer used in this draw call. For interpreting the first two values, some graphics background and/or experience is again extremely helpful. I immediately suspected that they were pixel sizes at the original input buffer resolution -- these are often supplied to shaders so that they can access neighbourhood values. And indeed, `1.0/1600 = 0.000625`, and the same holds true for the vertical resolution in the second component.
 
-For all the other passes involved in this particular case the situation is very similar -- both the viewports and a related shader parameter need to be adjusted, and I won't go into detail for all of them. For the hierarchical Z passes, it is particularly important to make sure that the correct mip level being used as a rendertarget is identified.
+For all the other passes involved in this particular case the situation is very similar -- both the viewport and a related shader parameter need to be adjusted, and I won't go into detail for all of them. For the hierarchical Z passes, it is particularly important to make sure that the correct mip level being used as a rendertarget is identified, since it affects the parameter setting.
 
 ## Setting those values
 Actually adjusting the viewports and in particular the shader parameters is a bit tricky. There are multiple ways to go about it, and I wasted some time in avenues that did not pan out. Generally, there are at least these options:
