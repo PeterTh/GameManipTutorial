@@ -191,9 +191,8 @@ void PreDraw(WrappedID3D11DeviceContext* context) {
                   auto iter = buffers.find(texdesc.Width);
                   if(iter == buffers.cend()) {
                     float constants[4] = {0.5f / vp.Width, 0.5f / vp.Height, (float)vp.Width, (float)vp.Height};
-                    ID3D11Device* dev;
-                    context->GetDevice(&dev);
                     initialdata.pSysMem = constants;
+                    context->GetDevice(&dev);
                     dev->CreateBuffer(&buffdesc, &initialdata, &replacementbuffer);
                     buffers[texdesc.Width] = replacementbuffer;
                   }
@@ -206,9 +205,8 @@ void PreDraw(WrappedID3D11DeviceContext* context) {
                   auto iter = mipBuffers.find(desc.Texture2D.MipSlice);
                   if(iter == mipBuffers.cend()) {
                     float constants[4] = {vp.Width, vp.Height, (float)desc.Texture2D.MipSlice-1, 0.0f};
-                    ID3D11Device* dev;
-                    context->GetDevice(&dev);
                     initialdata.pSysMem = constants;
+                    context->GetDevice(&dev);
                     dev->CreateBuffer(&buffdesc, &initialdata, &replacementbuffer);
                     mipBuffers[texdesc.Width] = replacementbuffer;
                   }
