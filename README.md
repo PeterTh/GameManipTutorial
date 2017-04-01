@@ -53,3 +53,53 @@ To summarize, our initial analysis tells us that:
 * Finally, horizontal and vertical depth-dependent blur passes are performed.
 
 We will refer to this Renderdoc frame capture as our *initial reference*, which we can use to look up what should really be happening in case something goes wrong (and it always does) once we start manipulating things.
+
+# Manipulation
+
+## Implementation framework
+In order to manipulate the rendering of a game, we need to get our code running in its process, and we need to intercept and potentially change its 3D API calls. This is a huge and labor-intesive topic, and since this toturial focuses on how to understand and change the rendering process rather than technicalities of dll injection and hooking, I'll not go further into this.
+
+What we wil lbe doing for our experiments is simply use Renderdoc as our vehicle of injection. This has the advantage of being a really solid and well-tested tool, which allows us to focus on figuring out what we need to do rather than why our toolset is not working for some conrner case. Of course, to actually create a meaningfully distributable and playable version, we need to port our final result into some injection framework designed for that purpose. 
+
+## Buffers (the easy part)
+The first thing we need to do in order to increase the rendering resolution is to actually make our buffers large enough to support that resolution. To do so, we change the `WrappedID3D11Device::CreateTexture2D` method in the Renderdoc sources:
+
+```C++
+HRESULT WrappedID3D11Device::CreateTexture2D(const D3D11_TEXTURE2D_DESC *pDesc,
+                                             const D3D11_SUBRESOURCE_DATA *pInitialData,
+                                             ID3D11Texture2D **ppTexture2D)
+{
+  static UINT resW = 2560; // resolution, should be automatically determined
+  static UINT resH = 1440;
+
+  // 800x450 R8G8B8A8_UNORM is the buffer used to store the AO result and subsequently blur it
+  // 800x450 R32_FLOAT is used to store hierarchical Z information (individual mipmap levels are rendered to)
+  //                   and serves as input to the main AO pass
+  if(pDesc->Format == DXGI_FORMAT_R8G8B8A8_UNORM || pDesc->Format == DXGI_FORMAT_R32_FLOAT) {
+    if(pDesc->Width == 800 && pDesc->Height == 450) {
+      // set to our display resolution instead
+      D3D11_TEXTURE2D_DESC copy = *pDesc;
+      copy.Width = resW;
+      copy.Height = resH;
+      pDesc = &copy;
+    }
+  }
+  
+  // [...]
+}
+```
+
+The code is rather self-explanatory, the `[...]` part refers to the existing RenderDoc implementation of the method.
+
+*Normally, at this point, I would also immediately look into other relevant and related things which need to be adapted, such as viewports, scissor rectanges and shader parameters.* However, for the tutorial, it's instructive to see what happens with just this change:
+
+![Image](img/04_screenshot_broken.png)
+
+As you can see, what *does* happen is that our rendering breaks completely. This will probably always be a common result while you are developing something like this. So how do we deal with it? This is where our reference frame capture comes in and proves very useful.
+
+Taking another capture and comparing it side-by-side with our reference, we can move forward until we see an issue occurring. Usually, it will be rather obvious, and so it is in this case:
+![Image](img/05_reference_comparison.png)
+
+As you can see, only a small part of our manipulated buffer is being used by the GPU, and this error propagates across the individual passes until basically nothing is left.
+
+## Viewports and shader parameters
