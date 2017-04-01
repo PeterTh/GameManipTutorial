@@ -236,7 +236,7 @@ As you can see, it's a bit cumbersome to make sure we are only touching exactly 
 ## Final result cleanup
 With these changes, we now get working higher-resolution ambient occlusion:
 ![Before](img/07a_result_pre.png)
-![After](img/07a_result_pre.png)
+![After](img/07b_result_post.png)
 It's still a bit artifacted, and could be even better, but it's a pretty huge improvement.
 
 However, our final frame -- that is, the actual game output -- is still completely broken. To fix this, we need to get back to our reference comparison. That way, we can determine that there is another depth/stencil buffer which needs to be adjusted to match our new AO buffer sizes, otherwise the API will (rightfully) refuse to do any rendering later on in the frame.
