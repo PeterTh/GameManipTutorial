@@ -1,25 +1,27 @@
 # Preamble
 
 ## What is this about?
-This document is a tutorial for manipulating the rendering of a game (generally to increase its quality) if you only have a binary available. If yo uever wondered how something like DSFix, or DPFix, or many of my GeDoSaTo plugins work, then this is for you.
+This document is a tutorial for manipulating the rendering of a game (generally to increase its quality) if you only have a binary available. If you ever wondered how something like DSFix, or DPFix, or many of my GeDoSaTo plugins work, then this is for you.
 
 If you have ever thought it would be great if you could do something like that too, then even better, this is for you too. Hopefully it will save you a lot of time figuring out things that become second nature when you have been doing this for half a decade or so.
 
 ## Structure
-There are 3 major sections in this document: "Preamble" (what you are reading right now), "Analysis", and "Manipulation". "Analysis" deals with figuring out what the game does and what we probably need to change, while "Manipulation" explains how to apply the actual changes. 
+There are 3 major sections in this document: "*Preamble*" (what you are reading right now), "*Analysis*", and "*Manipulation*". "Analysis" deals with figuring out what the game does and what we probably need to change, while "Manipulation" explains how to apply the actual changes. 
 
 ## Prerequisites
 In this tutorial, we will be using this software:
-* The *excellent* [RenderDoc](https://renderdoc.org/), which is a free graphics debugging tool that makes all of this **so much** easier than back when I was messign around with textual log files and image dumps.
+* The *excellent* [RenderDoc](https://renderdoc.org/), which is a free graphics debugging tool that makes all of this **so much** easier than back when I was messing around with textual log files and image dumps.
 * Visual Studio 2017 Community Edition, which is freely available from Microsoft.
 
 In terms of foundational knowledge, to get the full benefit of this tutorial, it would probably be good to have:
-* Basic knowledge of C++.
-* An understanding of the fundamentals of 3D rendering.
+* Basic familiarity with the C++ programming language.
+* An understanding of the fundamentals of 3D rendering and the DirectX11 API.
 * Some knowledge about Screen-Space Ambient Occlusion. 
 
+It's probably still somewhat useful without some of those.
+
 ## The game of coice
-We will be dealing with Nier:Automata, because it is a great game and because it offers what I'd consider a "moderate" amount of challenge for the types of tasks we wish to perform. It also plays well with Renderdoc without any complicated coaxing. Of course, the tutorial should be equally applicable to a great many other games.
+We will be dealing with **Nier: Automata**, because it is a great game and because it offers what I'd consider a "moderate" amount of challenge for the types of tasks we wish to perform. It also plays well with Renderdoc without any complicated coaxing. Of course, the tutorial should be equally applicable to a great many other games.
 
 # Analysis
 
@@ -28,7 +30,7 @@ For the purpose of a tutorial (and for any type of work and modding really) it's
 
 ## A Reference Run of Renderdoc
 To gain an understanding of how the game performs its rendering, we will run it from within Renderdoc and *capture a frame*.
-This will allow us to investigate everything that happens which is related to rendering that particular frame. To do so, we need to point Renderdocat the game executable and launch it:
+This will allow us to investigate everything that happens which is related to rendering that particular frame. To do so, we need to point Renderdoc at the game executable and launch it:
 ![Image](img/01_renderdoc_capture.png?raw=true)
 Then, in-game, we move to a location which should be a good place to judge the effect we want to manipulate, and capture a frame by pressing F12 (Renderdoc should show an in-game overlay which informs us of this shortcut). After exiting the game, Renderdoc will automatically load and show us the framedump in replay mode:
 ![Image](img/02_renderdoc_ao_pass.png?raw=true)
@@ -57,9 +59,9 @@ We will refer to this Renderdoc frame capture as our *initial reference*, which 
 # Manipulation
 
 ## Implementation framework
-In order to manipulate the rendering of a game, we need to get our code running in its process, and we need to intercept and potentially change its 3D API calls. This is a huge and labor-intesive topic, and since this toturial focuses on how to understand and change the rendering process rather than technicalities of dll injection and hooking, I'll not go further into this.
+In order to manipulate the rendering of a game, we need to get our code running in its process, and we need to intercept and potentially change its 3D API calls. This is a huge and labor-intesive topic, and since this tutorial focuses on how to understand and change the rendering process rather than technicalities of dll injection and hooking, I'll not go further into this.
 
-What we wil lbe doing for our experiments is simply use Renderdoc as our vehicle of injection. This has the advantage of being a really solid and well-tested tool, which allows us to focus on figuring out what we need to do rather than why our toolset is not working for some conrner case. Of course, to actually create a meaningfully distributable and playable version, we need to port our final result into some injection framework designed for that purpose. 
+What we will be doing for our experiments is simply use Renderdoc as our vehicle of injection. This has the advantage of being a really solid and well-tested tool, which allows us to focus on figuring out what we need to do rather than why our toolset is not working for some corner case. Of course, to actually create a meaningfully distributable and playable version, we need to port our final result into some injection framework designed for that purpose. 
 
 ## Buffers (the easy part)
 The first thing we need to do in order to increase the rendering resolution is to actually make our buffers large enough to support that resolution. To do so, we change the `WrappedID3D11Device::CreateTexture2D` method in the Renderdoc sources:
