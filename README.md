@@ -100,6 +100,137 @@ As you can see, what *does* happen is that our rendering breaks completely. This
 Taking another capture and comparing it side-by-side with our reference, we can move forward until we see an issue occurring. Usually, it will be rather obvious, and so it is in this case:
 ![Image](img/05_reference_comparison.png)
 
-As you can see, only a small part of our manipulated buffer is being used by the GPU, and this error propagates across the individual passes until basically nothing is left.
+As you can see, only a small part of our manipulated buffer is being used by the GPU. What you can't see in the screenshot but what is obvious when inspecting the subsequent draw calls in the trace file is that this error propagates across the individual mip map passes until basically nothing is left.
 
 ## Viewports and shader parameters
+If you are used to these kinds of modding -- or after you've read this tutorial ;) -- you know that this is a very typical manifestation of a viewport setting and/or shader parameters not being adjusted correctly to match the new, larger buffer sizes.
+
+What we need to investigate are the viewport settings for the relevant draw calls, as well as whether there are any shader parameters which seem to be derived from or dependent on the buffer resolution. We find the following for the main AO pass:
+![Image](img/06_viewport_params.png)
+We see both a hardcoded 800x450 viewport setting as well as a very suspicious pixel shader constant buffer used in this draw call. For interpreting the first two values, some graphics background and/or experience is again extremely helpful. I immediately suspected that they were pixel sizes at the original input buffer resolution -- these are often supplied to shaders so that they can access neighbourhood values. And indeed, `1.0/1600 = 0.000625`, and the same holds true for the vertical resolution in the second component.
+
+For all the other passes involved in this particular case the situation is very similar -- both the viewports and a related shader parameter need to be adjusted, and I won't go into detail for all of them. For the hierarchical Z passes, it is particularly important to make sure that the correct mip level being used as a rendertarget is identified.
+
+## Setting those values
+Actually adjusting the viewports and in particular the shader parameters is a bit tricky. There are multiple ways to go about it, and I wasted some time in avenues that did not pan out. Generally, there are at least these options:
+- If a game uses a particular buffer exclusively for the given operation, try to adjust the values when it is filled (either at creation time or when it is mapped and written to)
+- If the game reuses a buffer for multiple purposes, overwrite it before the draw call and restore its previous state afterwards.
+- Completely replace the buffer with your own copy before the draw call happens.
+
+When possible, I consider the first of these options to be the cleanest, but it did not work out for Nier in this case. The second one induces some ugly state management. The third requires you to manage the buffer lifetimes, but since we are talking about just a few floats here I considered that to be the most viable option.
+
+The second decision to make is when to actually perform the adjustments, and how to detect that they need to be performed. Here, it generally pays off to keep a few factors in mind:
+- The closer you are to the actual draw call, the less can go wrong in between.
+- Keep the first few checks as fast as possible and quickly weed out commoon draw call patterns to keep the overhead minimal.
+- It's better to do a bit too much checking than too little. Only touch what you really need to.
+- Be very careful with DirectX API object reference counting. Even by just inspecting things to perform checks, you are very likely to increase some reference counts which need to be released again.
+
+Following these principles, I arrived at this code:
+```C++
+void PreDraw(WrappedID3D11DeviceContext* context) {
+  UINT numViewports = 0;
+  context->RSGetViewports(&numViewports, NULL);
+  if(numViewports == 1) {
+    D3D11_VIEWPORT vp;
+    context->RSGetViewports(&numViewports, &vp);
+
+    if((vp.Width == 800 && vp.Height == 450)
+        || (vp.Width == 400 && vp.Height == 225)
+        || (vp.Width == 200 && vp.Height == 112)
+        || (vp.Width == 100 && vp.Height == 56)
+        || (vp.Width == 50 && vp.Height == 28)
+        || (vp.Width == 25 && vp.Height == 14)) {
+
+      ID3D11RenderTargetView *rtView = NULL;
+      context->OMGetRenderTargets(1, &rtView, NULL);
+      if(rtView) {
+        D3D11_RENDER_TARGET_VIEW_DESC desc;
+        rtView->GetDesc(&desc);
+        if(desc.Format == desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM || desc.Format == DXGI_FORMAT_R32_FLOAT) {
+          ID3D11Resource *rt = NULL;
+          rtView->GetResource(&rt);
+          if(rt) {
+            ID3D11Texture2D *rttex = NULL;
+            rt->QueryInterface<ID3D11Texture2D>(&rttex);
+            if(rttex) {
+              D3D11_TEXTURE2D_DESC texdesc;
+              rttex->GetDesc(&texdesc);
+              if(texdesc.Width != vp.Width) {
+                // Here we go!
+                // Viewport is the easy part
+                vp.Width = (float)texdesc.Width;
+                vp.Height = (float)texdesc.Height;
+                // if we are at mip slice N, divide by 2^N
+                if(desc.Texture2D.MipSlice > 0) {
+                  vp.Width = (float)(texdesc.Width >> desc.Texture2D.MipSlice);
+                  vp.Height = (float)(texdesc.Height >> desc.Texture2D.MipSlice);
+                }
+                context->RSSetViewports(1, &vp);
+
+                // The constant buffer is a bit more difficult
+                // We don't want to create a new buffer every frame,
+                // but we also can't use the game's because they are read-only
+                // this just-in-time initialized map is a rather ugly solution,
+                // but it works as long as the game only renders from 1 thread (which it does)
+                // NOTE: rather than storing them statically here (basically a global) the lifetime should probably be managed
+                D3D11_BUFFER_DESC buffdesc;
+                buffdesc.ByteWidth = 16;
+                buffdesc.Usage = D3D11_USAGE_IMMUTABLE;
+                buffdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+                buffdesc.CPUAccessFlags = 0;
+                buffdesc.MiscFlags = 0;
+                buffdesc.StructureByteStride = 16;
+                D3D11_SUBRESOURCE_DATA initialdata;
+                ID3D11Buffer* replacementbuffer = NULL;
+                ID3D11Device* dev = NULL;
+
+                // If we are not rendering to a mip map for hierarchical Z, the format is 
+                // [ 0.5f / W, 0.5f / H, W, H ] (half-pixel size and total dimensions)
+                if(desc.Texture2D.MipSlice == 0) {
+                  static std::map<UINT, ID3D11Buffer*> buffers;
+                  auto iter = buffers.find(texdesc.Width);
+                  if(iter == buffers.cend()) {
+                    float constants[4] = {0.5f / vp.Width, 0.5f / vp.Height, (float)vp.Width, (float)vp.Height};
+                    ID3D11Device* dev;
+                    context->GetDevice(&dev);
+                    initialdata.pSysMem = constants;
+                    dev->CreateBuffer(&buffdesc, &initialdata, &replacementbuffer);
+                    buffers[texdesc.Width] = replacementbuffer;
+                  }
+                  context->PSSetConstantBuffers(12, 1, &buffers[texdesc.Width]);
+                }
+                // For hierarchical Z mips, the format is
+                // [ W, H, LOD (Mip-1), 0.0f ]
+                else {
+                  static std::map<UINT, ID3D11Buffer*> mipBuffers;
+                  auto iter = mipBuffers.find(desc.Texture2D.MipSlice);
+                  if(iter == mipBuffers.cend()) {
+                    float constants[4] = {vp.Width, vp.Height, (float)desc.Texture2D.MipSlice-1, 0.0f};
+                    ID3D11Device* dev;
+                    context->GetDevice(&dev);
+                    initialdata.pSysMem = constants;
+                    dev->CreateBuffer(&buffdesc, &initialdata, &replacementbuffer);
+                    mipBuffers[texdesc.Width] = replacementbuffer;
+                  }
+                  context->PSSetConstantBuffers(8, 1, &mipBuffers[texdesc.Width]);
+                }
+                if(dev) dev->Release();
+              }
+            }
+            rt->Release();
+          }
+        }
+        rtView->Release();
+      }
+    }
+  }
+}
+
+void WrappedID3D11DeviceContext::Draw(UINT VertexCount, UINT StartVertexLocation)
+{
+	if(VertexCount == 4 && StartVertexLocation == 0) PreDraw(this);
+  
+  // [...]
+}
+```
+As you can see, it's a bit cumbersome to make sure we are only touching exactly what we want to touch, but it's really more *lengthy* than complicated. Basically, for every draw call fitting the pattern (4 vertices, 1 target, specific formats, specific sizes), we check whether our rendertarget texture has a different size than the currently set viewport, and if so we adjust the viewport and set a new constant buffer in the corresponding slot.
