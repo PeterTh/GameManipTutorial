@@ -69,8 +69,9 @@ HRESULT WrappedID3D11Device::CreateTexture2D(const D3D11_TEXTURE2D_DESC *pDesc,
                                              const D3D11_SUBRESOURCE_DATA *pInitialData,
                                              ID3D11Texture2D **ppTexture2D)
 {
-  static UINT resW = 2560; // resolution, should be automatically determined
-  static UINT resH = 1440;
+  // Desired AO resolution
+  static UINT aoW = 1280; 
+  static UINT aoH = 720;
 
   // 800x450 R8G8B8A8_UNORM is the buffer used to store the AO result and subsequently blur it
   // 800x450 R32_FLOAT is used to store hierarchical Z information (individual mipmap levels are rendered to)
@@ -79,8 +80,8 @@ HRESULT WrappedID3D11Device::CreateTexture2D(const D3D11_TEXTURE2D_DESC *pDesc,
     if(pDesc->Width == 800 && pDesc->Height == 450) {
       // set to our display resolution instead
       D3D11_TEXTURE2D_DESC copy = *pDesc;
-      copy.Width = resW;
-      copy.Height = resH;
+      copy.Width = aoW;
+      copy.Height = aoH;
       pDesc = &copy;
     }
   }
