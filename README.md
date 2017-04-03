@@ -211,9 +211,9 @@ void PreDraw(WrappedID3D11DeviceContext* context) {
                     initialdata.pSysMem = constants;
                     context->GetDevice(&dev);
                     dev->CreateBuffer(&buffdesc, &initialdata, &replacementbuffer);
-                    mipBuffers[texdesc.Width] = replacementbuffer;
+                    mipBuffers[desc.Texture2D.MipSlice] = replacementbuffer;
                   }
-                  context->PSSetConstantBuffers(8, 1, &mipBuffers[texdesc.Width]);
+                  context->PSSetConstantBuffers(8, 1, &mipBuffers[desc.Texture2D.MipSlice]);
                 }
                 if(dev) dev->Release();
               }
